@@ -1,0 +1,14 @@
+[package]
+name = "piomux"
+version = "0.1.0"
+authors = ["Kira Bruneau <kira.bruneau@pm.me>"]
+edition = "2018"
+
+[dependencies]
+ringbuf = "0.2.6"
+slab = "0.4.4"
+tokio = { version = "1.11.0", features = ["rt", "net", "process", "macros"] }
+
+[profile.release]
+lto = true
+panic = "abort"
