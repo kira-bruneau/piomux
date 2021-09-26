@@ -12,17 +12,20 @@ use std::{
 };
 
 use tokio::{
-    io::{AsyncRead, AsyncWrite, ReadBuf},
-    net::{UnixListener, UnixStream},
+    io::{stdout, AsyncRead, AsyncWrite, ReadBuf},
+    net::UnixListener,
     process::{Child, Command},
 };
 
-use crate::ring_buffer::{RingBuffer, RingBufferCursor};
+use crate::{
+    connection::{Connection, StdioConnection, UnixConnection},
+    ring_buffer::RingBuffer,
+};
 
 #[derive(Debug)]
 pub struct Server {
     listener: UnixListener,
-    connections: Slab<Connection>,
+    connections: Slab<Connection<4096>>,
     process: Child,
     output_buffer: RingBuffer<u8, 4096>,
 }
@@ -33,14 +36,22 @@ impl Server {
         program: impl AsRef<OsStr>,
         args: impl IntoIterator<Item = impl AsRef<OsStr>>,
     ) -> io::Result<Self> {
+        let output_buffer = RingBuffer::new();
+
+        let mut connections = Slab::with_capacity(1);
+        connections.insert(Connection::Stdio(StdioConnection {
+            stdout: stdout(),
+            cursor: output_buffer.end(),
+        }));
+
         Ok(Self {
             listener: UnixListener::bind(path)?,
-            connections: Slab::new(),
+            connections,
             process: Command::new(program)
                 .args(args)
                 .stdout(Stdio::piped())
                 .spawn()?,
-            output_buffer: RingBuffer::new(),
+            output_buffer,
         })
     }
 
@@ -57,10 +68,12 @@ impl Server {
 
     fn poll_accept(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
         match self.listener.poll_accept(cx)? {
-            Poll::Ready((socket, _addr)) => Poll::Ready(Ok(self.connections.insert(Connection {
-                socket,
-                cursor: self.output_buffer.end(),
-            }))),
+            Poll::Ready((socket, _addr)) => Poll::Ready(Ok(self.connections.insert(
+                Connection::Unix(UnixConnection {
+                    socket,
+                    cursor: self.output_buffer.end(),
+                }),
+            ))),
             Poll::Pending => Poll::Pending,
         }
     }
@@ -76,13 +89,13 @@ impl Server {
             if let Some(connection) = self.connections.get_mut(connection_id) {
                 let slices = self
                     .output_buffer
-                    .slices_from(connection.cursor)
+                    .slices_from(*connection.cursor())
                     .map(IoSlice::new);
 
-                match Pin::new(&mut connection.socket).poll_write_vectored(cx, &slices) {
+                match Pin::new(&mut connection.async_write()).poll_write_vectored(cx, &slices) {
                     Poll::Ready(Ok(bytes_written)) => {
                         debug_assert!(bytes_written != 0);
-                        connection.cursor += bytes_written;
+                        *connection.cursor_mut() += bytes_written;
                         min_bytes_written = min(bytes_written, min_bytes_written);
                     }
                     Poll::Ready(Err(err)) if err.kind() == ErrorKind::BrokenPipe => {
@@ -137,10 +150,4 @@ impl Future for Server {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::into_inner(self).poll_inner(cx)
     }
-}
-
-#[derive(Debug)]
-struct Connection {
-    socket: UnixStream,
-    cursor: RingBufferCursor<4096>,
 }

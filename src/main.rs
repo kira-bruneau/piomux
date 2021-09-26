@@ -1,3 +1,4 @@
+mod connection;
 mod ring_buffer;
 mod server;
 
