@@ -1,8 +1,7 @@
 {
   description = "A process I/O multiplexer";
 
-  # Nixpkgs / NixOS version to use.
-  inputs.nixpkgs.url = "nixpkgs/nixos-21.05";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/staging-next";
 
   inputs.import-cargo.url = github:edolstra/import-cargo;
 

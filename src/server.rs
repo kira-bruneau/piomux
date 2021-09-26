@@ -74,10 +74,12 @@ impl Server {
         let mut min_bytes_written = self.output_buffer.len();
         for connection_id in 0..self.connections.capacity() {
             if let Some(connection) = self.connections.get_mut(connection_id) {
-                let [first, second] = self.output_buffer.slices_from(connection.cursor);
-                match Pin::new(&mut connection.socket)
-                    .poll_write_vectored(cx, &[IoSlice::new(first), IoSlice::new(second)])
-                {
+                let slices = self
+                    .output_buffer
+                    .slices_from(connection.cursor)
+                    .map(IoSlice::new);
+
+                match Pin::new(&mut connection.socket).poll_write_vectored(cx, &slices) {
                     Poll::Ready(Ok(bytes_written)) => {
                         debug_assert!(bytes_written != 0);
                         connection.cursor += bytes_written;

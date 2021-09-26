@@ -209,11 +209,8 @@ mod test {
     #[test]
     fn slices_from_contiguous_when_partially_filled() {
         let mut buffer = RingBuffer::<u8, 8>::new();
-        unsafe {
-            *buffer.data[2].as_mut_ptr() = 0;
-            *buffer.data[3].as_mut_ptr() = 1;
-        }
-
+        buffer.data[2].write(0);
+        buffer.data[3].write(1);
         buffer.cursor = RingBufferCursor { inner: 2 };
         buffer.len = 2;
 
@@ -225,14 +222,11 @@ mod test {
     #[test]
     fn slices_from_noncontiguous_when_partially_filled() {
         let mut buffer = RingBuffer::<u8, 8>::new();
-        unsafe {
-            *buffer.data[5].as_mut_ptr() = 0;
-            *buffer.data[6].as_mut_ptr() = 1;
-            *buffer.data[7].as_mut_ptr() = 2;
-            *buffer.data[0].as_mut_ptr() = 3;
-            *buffer.data[1].as_mut_ptr() = 4;
-        }
-
+        buffer.data[5].write(0);
+        buffer.data[6].write(1);
+        buffer.data[7].write(2);
+        buffer.data[0].write(3);
+        buffer.data[1].write(4);
         buffer.cursor = RingBufferCursor { inner: 5 };
         buffer.len = 5;
 
